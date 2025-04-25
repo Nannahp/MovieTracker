@@ -1,0 +1,25 @@
+<FlatList
+            data={movies}
+            keyExtractor={(item) => item.id.toString()}
+            horizontal={true}
+            renderItem={({ item }) => (
+                <Pressable style={styles.card} >
+                    <Image source={{ uri: item.imageUrl }} style={styles.image} />
+                    <Text style={styles.title}>{item.title}</Text>
+                </Pressable>
+            )}
+        />
+        </View>
+        <View style={styles.series}>
+        <Text style={styles.H2}>Series</Text>
+        <FlatList
+            data={series}
+            keyExtractor={(item) => item.id.toString()}
+            horizontal={true}
+            renderItem={({ item }) => (
+                <Pressable style={styles.card} >
+                    <Image source={{ uri: item.imageUrl }} style={styles.image} />
+                    <Text style={styles.title}>{item.title}</Text>
+                </Pressable>
+            )}
+        />
