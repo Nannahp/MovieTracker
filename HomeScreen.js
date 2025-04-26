@@ -21,7 +21,7 @@ export default function HomeScreen({ navigation }) {
     const [open, setOpen] = useState(false);
   const [showAdded, setShowAdded] = useState(false);
     useEffect(() => {
-        const RAPID_API_KEY = "" 
+        const RAPID_API_KEY = "4b38b286cbmsh1ab51ac7c7ea3a4p161812jsn62ae185280ee" 
         
         const client = new streamingAvailability.Client(
             new streamingAvailability.Configuration( {
@@ -154,15 +154,47 @@ export default function HomeScreen({ navigation }) {
                     data={movies}
                     keyExtractor={(item, index) => index.toString()}
                     renderItem={({ item }) => (
-                      <View style={styles.movieItem}>
-                        <Image source={{ uri: item.image }} style={styles.image} />
-                        <Text style={styles.movieTitle}>{item.title}</Text>
-                      </View>
+                      <View style={styles.contentItem}>
+                        <Image
+                          source={{
+                            uri:
+                              item.imageSet?.verticalPoster?.w360 ||
+                              'https://via.placeholder.com/150',
+                          }}
+                          style={styles.image}
+                          resizeMode="cover"
+                        />
+                        <Text style={styles.contentTitle}>{item.title}</Text>
+      
+                        {item.streamingOptions?.dk ? (
+                          Array.from(
+                            new Map(
+                              item.streamingOptions.dk.map((platform) => [
+                                platform.service.id,
+                                platform,
+                              ])
+                            ).values()
+                          ).map((platform, index) => (
+                            <TouchableOpacity
+                              key={index}
+                              onPress={() => Linking.openURL(platform.link)}>
+                              <SvgUri
+                                width="30"
+                                height="30"
+                                uri={platform.service.imageSet.darkThemeImage}
+                              />
+                            </TouchableOpacity>
+                          ))
+                        ) : (
+                          <Text style={styles.platform}>No streaming info</Text>
+                        )}
+                     </View>
                     )}
                     contentContainerStyle={styles.flatlistContainer}
                     showsHorizontalScrollIndicator={false}
                   />
                 </View>
+                
     
                 {/* TV Section */}
                 <View style={styles.section}>
@@ -172,10 +204,41 @@ export default function HomeScreen({ navigation }) {
                     data={series}
                     keyExtractor={(item, index) => index.toString()}
                     renderItem={({ item }) => (
-                      <View style={styles.movieItem}>
-                        <Image source={{ uri: item.image }} style={styles.image} />
-                        <Text style={styles.movieTitle}>{item.title}</Text>
-                      </View>
+                      <View style={styles.contentItem}>
+                        <Image
+                          source={{
+                            uri:
+                              item.imageSet?.verticalPoster?.w360 ||
+                              'https://via.placeholder.com/150',
+                          }}
+                          style={styles.image}
+                          resizeMode="cover"
+                        />
+                        <Text style={styles.contentTitle}>{item.title}</Text>
+      
+                        {item.streamingOptions?.dk ? (
+                          Array.from(
+                            new Map(
+                              item.streamingOptions.dk.map((platform) => [
+                                platform.service.id,
+                                platform,
+                              ])
+                            ).values()
+                          ).map((platform, index) => (
+                            <TouchableOpacity
+                              key={index}
+                              onPress={() => Linking.openURL(platform.link)}>
+                              <SvgUri
+                                width="30"
+                                height="30"
+                                uri={platform.service.imageSet.darkThemeImage}
+                              />
+                            </TouchableOpacity>
+                          ))
+                        ) : (
+                          <Text style={styles.platform}>No streaming info</Text>
+                        )}
+                     </View>
                     )}
                     contentContainerStyle={styles.flatlistContainer}
                     showsHorizontalScrollIndicator={false}
@@ -224,7 +287,7 @@ export default function HomeScreen({ navigation }) {
         },
         content: {
           flex: 1,
-          paddingHorizontal: 25,
+          paddingHorizontal: 15,
         },
         splitContainer: {
           flex: 1,
@@ -240,7 +303,8 @@ export default function HomeScreen({ navigation }) {
         H2: {
           fontWeight: 'bold',
           color: 'white',
-          fontSize: 24,
+          fontSize: 18,
+          
         },
         footer: {
           position: 'absolute', // Fix the footer at the bottom of the screen
@@ -302,12 +366,27 @@ export default function HomeScreen({ navigation }) {
           padding: 10,
           borderRadius: 10,
           width: 250,
-          height:400,
+          height:500,
+        },
+        contentItem: {
+          marginVertical: 10,
+          marginHorizontal:10,
+          backgroundColor: '#1e1e1e',
+          padding: 10,
+          borderRadius: 10,
+          width: 150,
+          height:250,
+         
         },
         image: {
           width: '100%',
           height: '60%',
           borderRadius: 10,
+        },
+        contentTitle: {
+          color: 'white',
+          fontSize: 12,
+          marginTop: 10,
         },
         movieTitle: {
           color: 'white',
@@ -316,11 +395,11 @@ export default function HomeScreen({ navigation }) {
         },
         platform: {
           color: 'white',
-          fontSize: 14,
+          fontSize: 12,
         },
         platformImage: {
-          height:'20%',
-          width: '20%',
+          height:5,
+          width: 5,
         },
         addedMessage: {
             position: 'absolute',
