@@ -1,9 +1,12 @@
 
 import React from 'react';
 import BouncyCheckbox from "react-native-bouncy-checkbox";
-import { View, Text, StyleSheet, TouchableOpacity,Pressable, FlatList, Image, TextInput, Linking } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity,Pressable, FlatList, Image, TextInput, Linking,} from 'react-native';
 import { useState, useEffect } from 'react';
 import * as streamingAvailability from 'streaming-availability';
+import { Dimensions } from 'react-native';
+import { RFPercentage, RFValue } from 'react-native-responsive-fontsize';
+import { KeyboardAwareScrollView } from 'react-native-keyboard-aware-scroll-view';
 import { debounce } from 'lodash';
 import{ SvgUri }from 'react-native-svg';
 import { useAuth } from "./AuthContext";
@@ -11,8 +14,15 @@ import { signOut } from "firebase/auth";
 import { auth,db } from "./firebase";
 import { doc, setDoc, collection, deleteDoc, serverTimestamp   } from 'firebase/firestore';
 import { getDocs } from 'firebase/firestore';
+import Icon from 'react-native-vector-icons/FontAwesome';
+import ActionButton from 'react-native-circular-action-menu';
+import IconAction from 'react-native-vector-icons/Ionicons';
+
+const { width, height } = Dimensions.get('window');
 export default function HomeScreen({ navigation }) {
   
+
+
   const { userID } = useAuth()
   const [userEmail, setUserEmail] = useState('');
   const [note, setNote] = useState('')
@@ -25,6 +35,29 @@ export default function HomeScreen({ navigation }) {
   const [showMenu, setShowMenu] = useState(false);
   const userRef = doc(db, "users", userID); 
   const [message, setMessage] = useState('')
+  const [checkedItems, setCheckedItems] = useState({});
+  const [movieSortOrder, setMovieSortOrder] = useState('asc');
+const [seriesSortOrder, setSeriesSortOrder] = useState('asc');
+const toggleMovieSort = () => {
+  setMovieSortOrder(prev => (prev === 'asc' ? 'desc' : 'asc'));
+};
+
+const toggleSeriesSort = () => {
+  setSeriesSortOrder(prev => (prev === 'asc' ? 'desc' : 'asc'));
+};
+
+
+const sortedMovies = [...movies].sort((a, b) =>
+  movieSortOrder === 'asc'
+    ? a.createdAt - b.createdAt
+    : b.createdAt - a.createdAt
+);
+
+const sortedSeries = [...series].sort((a, b) =>
+  seriesSortOrder === 'asc'
+    ? a.createdAt - b.createdAt
+    : b.createdAt - a.createdAt
+);
   useEffect(() => {
     const currentUser = auth.currentUser;
     if (currentUser) {
@@ -77,7 +110,20 @@ export default function HomeScreen({ navigation }) {
       setShowMenu(prev => !prev);
     }
 
-
+    const toggleCheckbox = (id) => {
+      setCheckedItems((prevState) => {
+        const newState = { ...prevState };
+  
+        // If item is already checked, uncheck it, else check it
+        if (newState[id]) {
+          delete newState[id];
+        } else {
+          newState[id] = true;
+        }
+  
+        return newState;
+      });
+    };
     const handleAddItem = async (item) => {
 
       // Convert API item to the structure required by Firestore
@@ -87,7 +133,7 @@ export default function HomeScreen({ navigation }) {
     image: item.imageSet?.verticalPoster?.w360 || 'default-image-url', // Use a default image if no image is available
     streamingOptions: item.streamingOptions?.dk || [], // Ensure it's an empty array if no streaming options
     showType: item.showType,
-    createdAt: serverTimestamp()
+    createdAt:serverTimestamp()
   };
       // Check if the item is already added to avoid duplicates
       const userRef = doc(db, "users", userID);  // Reference to the logged-in user's document
@@ -154,6 +200,9 @@ console.log("Trying to add movie ID:", item.id);
       }));
       setSeries(fetchedSeries);
     };
+
+
+
     //remove shows
     const removeShow = async (collectionName, showId) => {
       try{
@@ -168,7 +217,15 @@ console.log("Trying to add movie ID:", item.id);
           setSeries(filteredList);
         
         }
+
     await deleteDoc(showRef);
+
+// Ensure the checkbox state is cleared
+setCheckedItems(prevState => {
+  const newState = { ...prevState };
+  delete newState[showId];
+  return newState;
+});
 
       } catch (err) {
         console.log('remove failed: ', err)
@@ -198,10 +255,15 @@ console.log("Trying to add movie ID:", item.id);
 
           {showMenu && (
             <View style={styles.dropdownMenu}>
-              <Text style={styles.dropdownText}>Logged in as: {userEmail}</Text>
-              <Pressable onPress={handleLogout}>
-                <Text style={styles.logout}>Logout</Text>
-              </Pressable>
+              <Text style={styles.dropdownText}>Logged in as:</Text>
+              <Text style={styles.dropdownText}>
+                {userEmail.split('@')[0]} 
+                </Text>
+                <Pressable onPress={handleLogout} style={styles.logoutContainer}>
+      <Icon name="sign-out" size={24} color="white" />
+  
+    </Pressable>
+
             </View>
 )}
           
@@ -231,6 +293,7 @@ console.log("Trying to add movie ID:", item.id);
                     <TouchableOpacity
                       onPress={() => handleAddItem(item)}  
                       style={styles.movieItem}>
+                          <View style={styles.searchImageContainer}>
                       <Image
                         source={{
                           uri:
@@ -240,8 +303,10 @@ console.log("Trying to add movie ID:", item.id);
                         style={styles.image}
                         resizeMode="cover"
                       />
-                      <Text style={styles.movieTitle}>{item.title}</Text>
-    
+                      </View>
+
+                      <Text style={styles.searchTitle}>{item.title}</Text>
+                      <View style={styles.gridContainer}>   
                       {item.streamingOptions?.dk ? (
                         Array.from(
                           new Map(
@@ -250,52 +315,63 @@ console.log("Trying to add movie ID:", item.id);
                               platform,
                             ])
                           ).values()
-                        ).map((platform, index) => (
+                        ).slice(0, 6)
+                        .map((platform, index) => (
                           <TouchableOpacity
                             key={index}
-                            onPress={() => Linking.openURL(platform.link)}>
+                            onPress={() => Linking.openURL(platform.link)}
+                            style={styles.logoButton}>
                             <SvgUri
-                              width="40"
-                              height="40"
+                              width="50"
+                              height="50"
                               uri={platform.service.imageSet.darkThemeImage}
                             />
+                      
                           </TouchableOpacity>
                         ))
                       ) : (
                         <Text style={styles.platform}>No streaming info</Text>
                       )}
+                       </View>
                     </TouchableOpacity>
                   )}
                   contentContainerStyle={styles.flatlistContainer}
                   showsHorizontalScrollIndicator={false}
                 />
               </View>
+         
             ) : (
               <View style={styles.splitContainer}>
                 {/* Movies Section */}
                 <View style={styles.section}>
                   <Text style={styles.H2}>Movies</Text>
+                  <Pressable onPress={toggleMovieSort}>
+                  <IconAction name="caret-down-outline"style={styles.actionButtonIcon} />
+                  </Pressable>
                   <FlatList
                     horizontal
                     data={movies}
                     keyExtractor={(item, index) => index.toString()}
                     renderItem={({ item }) => (
                       <View style={styles.contentItem}>
-                            <View style={styles.imageContainer}>
+                            <View style={styles.contentImageContainer}>
                             <BouncyCheckbox
                               style={styles.checkbox}
-                              size={35}
-                              fillColor="green"
+                              size={30}
+                              fillColor="white"
                               unFillColor="#FFFFFF"
                               iconStyle={{ borderColor: "red" }}
                               innerIconStyle={{ borderWidth: 2 }}
-                              onPress={() => removeShow("movies", item.id)}
-                              isChecked={false}
+                              onPress={() => removeShow("movies", item.id)
+                              }
+                              isChecked={!!checkedItems[item.id]}  
+                            
                             />
                             <Image source={{ uri: item.image }} style={styles.image} resizeMode="cover" />
                           </View>
                         <Text style={styles.contentTitle}>{item.title}</Text>
-      
+                        
+                        <View style={styles.contentGridContainer}> 
                         {item.streamingOptions ? (
                           Array.from(
                             new Map(
@@ -307,7 +383,9 @@ console.log("Trying to add movie ID:", item.id);
                           ).map((platform, index) => (
                             <TouchableOpacity
                               key={index}
-                              onPress={() => Linking.openURL(platform.link)}>
+                              onPress={() => Linking.openURL(platform.link)}
+                              style={styles.contentLogoButton}>
+                            
                               <SvgUri
                                 width="30"
                                 height="30"
@@ -318,6 +396,7 @@ console.log("Trying to add movie ID:", item.id);
                         ) : (
                           <Text style={styles.platform}>No streaming info</Text>
                         )}
+                        </View>
                      </View>
                     )}
                     contentContainerStyle={styles.flatlistContainer}
@@ -329,27 +408,31 @@ console.log("Trying to add movie ID:", item.id);
                 {/* TV Section */}
                 <View style={styles.section}>
                   <Text style={styles.H2}>TV</Text>
+                  <Pressable onPress={toggleSeriesSort}>
+                  <IconAction name="caret-down-outline"style={styles.actionButtonIcon} />
+                  </Pressable>
                   <FlatList
                     horizontal
                     data={series}
                     keyExtractor={(item, index) => index.toString()}
                     renderItem={({ item }) => (
                       <View style={styles.contentItem}>
-                         <View style={styles.imageContainer}>
+                         <View style={styles.contentImageContainer}>
                           <BouncyCheckbox
                             style={styles.checkbox}
                             size={30}
-                            fillColor="green"
+                            fillColor="white"
                             unFillColor="#FFFFFF"
                             iconStyle={{ borderColor: "red" }}
                             innerIconStyle={{ borderWidth: 2 }}
                             onPress={() => removeShow("tvShows", item.id)}
-                            isChecked={false}
+                            isChecked={!!checkedItems[item.id]}  
+                          
                           />
                           <Image source={{ uri: item.image }} style={styles.image} resizeMode="cover" />
                         </View>
                         <Text style={styles.contentTitle}>{item.title}</Text>
-      
+                        <View style={styles.contentGridContainer}> 
                         {item.streamingOptions ? (
                           Array.from(
                             new Map(
@@ -361,7 +444,8 @@ console.log("Trying to add movie ID:", item.id);
                           ).map((platform, index) => (
                             <TouchableOpacity
                             key={index}
-                            onPress={() => Linking.openURL(platform.link)}>
+                            onPress={() => Linking.openURL(platform.link)}
+                            style={styles.contentLogoButton}>
                             <SvgUri
                               width="30"
                               height="30"
@@ -372,6 +456,7 @@ console.log("Trying to add movie ID:", item.id);
                         ) : (
                           <Text style={styles.platform}>No streaming info</Text>
                         )}
+                        </View>
                      </View>
                     )}
                     contentContainerStyle={styles.flatlistContainer}
@@ -384,9 +469,29 @@ console.log("Trying to add movie ID:", item.id);
     
           {/* Add Button at the bottom */}
           <View style={styles.footer}>
-            <TouchableOpacity onPress={openAdd} style={styles.button}>
-              <Text style={styles.add}>+</Text>
-            </TouchableOpacity>
+
+          <ActionButton buttonColor="rgba(231,76,60,1)" style={styles.addButton}>
+          <ActionButton.Item  title="New Task" >
+            <IconAction name="" style={styles.actionButtonIcon} />
+          </ActionButton.Item>
+          <ActionButton.Item buttonColor='#rgba(231,76,60,1)' title="Notifications" onPress={openAdd}>
+            <IconAction name="add-outline"style={styles.actionButtonIcon} />
+          </ActionButton.Item>
+          <ActionButton.Item buttonColor='#rgba(231,76,60,1)' title="Notifications" onPress={() => {}}>
+            <IconAction name="search-outline" style={styles.actionButtonIcon} />
+          </ActionButton.Item>
+          <ActionButton.Item  >
+            <IconAction name="" style={styles.actionButtonIcon} />
+          </ActionButton.Item>
+      
+        </ActionButton>
+
+
+            {//
+            //<TouchableOpacity onPress={openAdd} style={styles.button}>
+             // <Text style={styles.add}>+</Text>
+            //</TouchableOpacity>
+            }
           </View>
     
           {/* "Added" Message */}
@@ -399,220 +504,259 @@ console.log("Trying to add movie ID:", item.id);
       );
     }
     const styles = StyleSheet.create({
-        flatlistContainer: {
-          paddingTop: 10,
-          paddingBottom: 20,
-          justifyContent: 'center',
-          alignItems: 'center',
-        },      
-        container: {
-          flex: 1,
-          backgroundColor: 'black',
-        },
-        header: {
-          paddingTop: 50,
-          paddingBottom: 10,
-          alignItems: 'center',
-          justifyContent: 'center',
-          position: 'relative',
-        },
-        H1: {
-          color: 'white',
-          fontWeight: 'bold',
-          fontSize: 36,
-          textAlign: 'center',
-        },
-        content: {
-          flex: 1,
-          paddingHorizontal: 15,
-        },
-        splitContainer: {
-          flex: 1,
-          flexDirection: 'column',
-        },
-        section: {
-          flex: 1,
-          paddingHorizontal: 10,
-          paddingTop: 10,
-          borderBottomColor: '#444',
-          borderBottomWidth: 1,
-        },
-        H2: {
-          fontWeight: 'bold',
-          color: 'white',
-          fontSize: 18,
-          
-          
-        },
-        footer: {
-          bottom:10,
-          padding: 15,
-          alignItems: 'center',
-          justifyContent: 'flex-end',
-          zIndex: 20, // Ensure footer is above overlay
-        },
-        button: {
-          position:'absolute',
-          backgroundColor: '#FF4500',
-          paddingVertical: 5,
-          paddingHorizontal: 20,
-          borderRadius: 30,
-          shadowColor: '#FF4500',
-          shadowOpacity: 0.2,
-        },
-        logoutButton: {
-          backgroundColor: '#FF4500',
-          paddingVertical: 6,
-          paddingHorizontal: 12,
-          borderRadius: 20,
+      flatlistContainer: {
+        paddingTop: height * 0.01,
+        paddingBottom: height * 0.025,
+        justifyContent: 'center',
+        alignItems: 'center',
+      },
+      container: {
+        flex: 1,
+        backgroundColor: 'black',
+      },
+      header: {
+        paddingTop: height * 0.06,
+        paddingBottom: height * 0.015,
+        alignItems: 'center',
+        justifyContent: 'center',
+        position: 'relative',
+      },
+      H1: {
+        color: 'white',
+        fontWeight: 'bold',
+        fontSize: RFValue(28, height),
+        textAlign: 'center',
+      },
+      content: {
+        flex: 1,
+        paddingHorizontal: width * 0.04,
+      },
+      splitContainer: {
+        flex: 1,
+        flexDirection: 'column',
         
+      },
+      section: {
+        paddingHorizontal: width * 0.03,
+        paddingTop: height * 0.02,
+        borderBottomColor: '#444',
+        borderBottomWidth: 0,
       
-        },
-        logout: {
-          color: 'white',
-          fontSize: 14,
-          fontWeight: 'bold',
-        },
-        
-        add: {
-          color: 'white',
-          fontSize: 32,
-        },
-        searchOverlay: {
-          position: 'absolute',
-          top: 0, // Starts from the top of the screen
-          left: 0,
-          right: 0,
-          bottom: 0, // Takes the full height of the screen
-          backgroundColor: 'black',
-          zIndex: 30, // Make sure it's above the content and footer
-          paddingHorizontal: 25,
-          paddingTop: 20,
-        },
-        inputField: {
-          marginBottom: 0,
-        },
-        input: {
-          height: 40,
-          borderWidth: 1,
-          borderColor: 'white',
-          backgroundColor: 'white',
-          paddingHorizontal: 10,
-          borderRadius: 6,
-        },
-        closeContainer: {
-          alignItems: 'flex-end',
-          marginBottom: 5,
-        },
-        close: {
-          color: 'white',
-          fontSize: 18,
-        },
-        movieItem: {
-          marginVertical: 10,
-          marginHorizontal:10,
-          backgroundColor: '#1e1e1e',
-          padding: 10,
-          borderRadius: 10,
-          width: 250,
-          height:500,
-        },
-        contentItem: {
-          marginVertical: 10,
-          marginHorizontal:10,
-          backgroundColor: '#1e1e1e',
-          padding: 10,
-          borderRadius: 10,
-          width: 150,
-          height:250,
-          position: 'relative', 
-         
-        },
+      },
+      H2: {
+        fontWeight: 'bold',
+        color: 'white',
+        fontSize: RFValue(18, height),
+      },
+      searchTitle: {
+        fontWeight: 'bold',
+        color: 'white',
+        fontSize: RFValue(18, height),
+        borderBottomColor: '#444',
+        borderBottomWidth: 1,
+        height: height * 0.06,
+      },
+      footer: {
+        bottom: height * 0.03,
+        padding: 0,
+        alignItems: 'center',
+        justifyContent: 'flex-end',
+        zIndex: 20,
+      },
+      button: {
+        position: 'absolute',
+        backgroundColor: '#FF4500',
+        paddingVertical: height * 0.008,
+        paddingHorizontal: width * 0.06,
+        borderRadius: width * 0.08,
+        shadowColor: '#FF4500',
+        shadowOpacity: 0.2,
+        zIndex: 20,
+      },
+      logoutButton: {
+        backgroundColor: '#FF4500',
+        paddingVertical: height * 0.007,
+        paddingHorizontal: width * 0.035,
+        borderRadius: width * 0.05,
+      },
+      logout: {
+        color: 'white',
+        fontSize: RFValue(14, height),
+        fontWeight: 'bold',
+      },
+      add: {
+        color: 'white',
+        fontSize: RFValue(32, height),
+      },
+      searchOverlay: {
+        position: 'absolute',
+        top: 0,
+        left: 0,
+        right: 0,
+        bottom: 0,
+        backgroundColor: 'black',
+        zIndex: 1000,
+        paddingHorizontal: width * 0.06,
+        paddingTop: height * 0.025,
+      },
+      inputField: {
+        marginBottom: 0,
+      },
+      input: {
+        height: height * 0.05,
+        borderWidth: 1,
+        borderColor: 'white',
+        backgroundColor: 'white',
+        paddingHorizontal: width * 0.03,
+        borderRadius: width * 0.02,
+      },
+      closeContainer: {
+        alignItems: 'flex-end',
+        marginBottom: height * 0.01,
+      },
+      close: {
+        color: 'white',
+        fontSize: RFValue(22, height),
+      },
+      movieItem: {
+        marginVertical: height * 0.015,
+        marginHorizontal: width * 0.025,
+        backgroundColor: '#1e1e1e',
+        padding: width * 0.03,
+        borderRadius: width * 0.035,
+        width: width * 0.6,
+        height: height * 0.5,
+      },
+      contentItem: {
+        marginVertical: height * 0.015,
+        marginHorizontal: width * 0.02,
+        backgroundColor: '#1e1e1e',
+        padding: width * 0.02,
+        borderRadius: width * 0.03,
+        width: width * 0.4,
+        height: height * 0.33,
+        position: 'relative',
+      },
+      image: {
+        width: '100%',
+        height: '100%',
+        borderRadius: width * 0.025,
+      },
+      contentTitle: {
+        fontWeight: 'bold',
+        color: 'white',
+        fontSize: RFValue(10, height),
+        height: height * 0.04,
+      },
+    
+      platform: {
+        color: 'white',
+        fontSize: RFValue(12, height),
+      },
+      platformImage: {
+        height: height * 0.01,
+        width: width * 0.01,
+      },
+      addedMessage: {
+        position: 'absolute',
+        bottom: height * 0.1,
+        padding: width * 0.03,
+        backgroundColor: 'green',
+        alignItems: 'center',
+        justifyContent: 'center',
+        width: width * 0.3,
+        borderRadius: width * 0.02,
+        zIndex: 10000,
+        alignSelf: 'center',
+
+      },
+      addedText: {
+        color: 'white',
+        fontSize: RFValue(16, height),
+        zIndex: 100,
+      },
+      profileIcon: {
+        position: 'absolute',
+        right: width * 0.05,
+        top: height * 0.075,
+        zIndex: 10,
+      },
+      profileText: {
+        fontSize: RFValue(22, height),
+        color: 'white',
+      },
+      dropdownMenu: {
+        position: 'absolute',
+        top: height * 0.12,
+        right: width * 0.05,
+        backgroundColor: '#222',
+        padding: width * 0.04,
+        borderRadius: width * 0.03,
+        zIndex: 100000,
+        width: width * 0.4, // Ensure the dropdown has a width
+        alignItems: 'center', // Center the text horizontally
+      },
+      
+      dropdownText: {
+        color: 'white',
+        marginBottom: height * 0.01,
+        width: '100%', // Ensure it takes full width
+        textAlign: 'center', // Center the text inside the container
+      },
+      contentImageContainer: {
+        position: 'relative',
+        width: '90%',
+        height: '60%',
+        left: '5%',
+        marginBottom: height * 0.015,
+      },
+      searchImageContainer: {
+        position: 'relative',
+        width: '100%',
+        height: '60%',
+        marginBottom: height * 0.015,
+        padding: width * 0.015,
+      },
+      checkbox: {
+        position: 'absolute',
+        left: width * 0.25,
+        top: -height * 0.005,
+        zIndex: 10,
+      },
+      contentGridContainer: {
+        flexDirection: 'row',
+        flexWrap: 'wrap',
+        justifyContent: 'flex-start',
+        maxWidth: width * 0.5,
+        gap: width * 0.02,
+      },
+      gridContainer: {
+        flexDirection: 'row',
+        flexWrap: 'wrap',
+        justifyContent: 'flex-start',
+        maxWidth: width * 0.9,
+        gap: width * 0.02,
+      },
+      logoButton: {
+        width: width * 0.15,
+        height: height * 0.03,
+        margin: width * 0.015,
+      },
+      contentLogoButton: {
+        width: width * 0.1,
+        height: height * 0.015,
        
-image: {
-  width: '100%',
-  height: '100%',
-  borderRadius: 10,
-},
-        contentTitle: {
-          color: 'white',
-          fontSize: 12,
-          marginTop: 10,
-        },
-        movieTitle: {
-          color: 'white',
-          fontSize: 18,
-          marginTop: 10,
-        },
-        platform: {
-          color: 'white',
-          fontSize: 12,
-        },
-        platformImage: {
-          height:5,
-          width: 5,
-        },
-        addedMessage: {
-            position: 'absolute',
-            bottom: 80, 
-        
-            padding: 10,
-            backgroundColor: 'green',
-            alignItems: 'center', // Ensures text is centered horizontally
-            justifyContent: 'center', // Centers the content vertically inside the container
-            width: '30%',  // Adjust width as needed
-            borderRadius: 5,
-            zIndex: 100,  // Ensure "Added" message is above content but below footer
-            alignSelf: 'center',  // Centers the container itself
-          },
-          
-          addedText: {
-            color: 'white',
-            fontSize: 16,
-            zIndex: 100, // Ensures text is above other content in the overlay
-          },
-          profileIcon: {
-            position: 'absolute',
-            right: 20,
-            top: 60,
-            zIndex: 10,
-          },
-          profileText: {
-            fontSize: 22,
-            color: 'white',
-          },
-          dropdownMenu: {
-            position: 'absolute',
-            top: 100,
-            right: 20,
-            backgroundColor: '#222',
-            padding: 15,
-            borderRadius: 10,
-            zIndex: 99,
-          },
-          dropdownText: {
-            color: 'white',
-            marginBottom: 10,
-          },
-          checkbox: {
-            position: 'absolute',
-            top: 10,
-            right:10,
-            zIndex: 100,
-          },
-          imageContainer: {
-            position: 'relative',
-            width:130,
-            height: 140, 
-            marginBottom: 10,
-           
-          },
-          
-          checkbox: {
-            position: 'absolute',
-            left:100,
-            top:-5,
-            zIndex: 10,
-          },
-      });
-      
+      },
+      logoutContainer: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        padding: 10,
+      },
+      actionButtonIcon: {
+        fontSize: 20,
+        height: 22,
+        color: 'white',
+      },
+     
+    });
+    
