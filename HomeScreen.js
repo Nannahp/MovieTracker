@@ -1,25 +1,36 @@
-//firebase
-//login
-//viwed/delete
-// fix list style
 
 import React from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, FlatList, Image, TextInput, Linking } from 'react-native';
+import BouncyCheckbox from "react-native-bouncy-checkbox";
+import { View, Text, StyleSheet, TouchableOpacity,Pressable, FlatList, Image, TextInput, Linking } from 'react-native';
 import { useState, useEffect } from 'react';
 import * as streamingAvailability from 'streaming-availability';
 import { debounce } from 'lodash';
 import{ SvgUri }from 'react-native-svg';
-
-
-
-
+import { useAuth } from "./AuthContext";
+import { signOut } from "firebase/auth";
+import { auth,db } from "./firebase";
+import { doc, setDoc, collection, deleteDoc, serverTimestamp   } from 'firebase/firestore';
+import { getDocs } from 'firebase/firestore';
 export default function HomeScreen({ navigation }) {
+  
+  const { userID } = useAuth()
+  const [userEmail, setUserEmail] = useState('');
+  const [note, setNote] = useState('')
     const [movies, setMovies] = useState([]);
     const [series, setSeries] = useState([]);
     const [entries, setEntries] = useState([]);
-    const [text, onChangeText] = React.useState('');
+    const [text, onChangeText] = useState('');
     const [open, setOpen] = useState(false);
   const [showAdded, setShowAdded] = useState(false);
+  const [showMenu, setShowMenu] = useState(false);
+  const userRef = doc(db, "users", userID); 
+  const [message, setMessage] = useState('')
+  useEffect(() => {
+    const currentUser = auth.currentUser;
+    if (currentUser) {
+      setUserEmail(currentUser.email);
+    }
+  }, []);
     useEffect(() => {
         const RAPID_API_KEY = "4b38b286cbmsh1ab51ac7c7ea3a4p161812jsn62ae185280ee" 
         
@@ -62,23 +73,138 @@ export default function HomeScreen({ navigation }) {
     const closeAdd = async () => {
         setOpen(false);
     }
-    const handleAddItem = (item) => {
-        if (item.showType === 'movie') {
-          setMovies((prevMovies) => [...prevMovies, item]);
-        } else if (item.showType === 'series') {
-          setSeries((prevSeries) => [...prevSeries, item]);
+    const toggleShowMenu = async () =>{
+      setShowMenu(prev => !prev);
+    }
+
+
+    const handleAddItem = async (item) => {
+
+      // Convert API item to the structure required by Firestore
+  const convertedItem = {
+    id: item.id,
+    title: item.title,
+    image: item.imageSet?.verticalPoster?.w360 || 'default-image-url', // Use a default image if no image is available
+    streamingOptions: item.streamingOptions?.dk || [], // Ensure it's an empty array if no streaming options
+    showType: item.showType,
+    createdAt: serverTimestamp()
+  };
+      // Check if the item is already added to avoid duplicates
+      const userRef = doc(db, "users", userID);  // Reference to the logged-in user's document
+    
+      const collectionRef = item.showType === 'movie' 
+    ? collection(userRef, 'movies')   // Reference to the user's movies subcollection
+    : collection(userRef, 'tvShows');  // Reference to the user's tvShows subcollection
+  
+  // Create a new document for the movie/show in Firestore
+  try {
+    await setDoc(doc(collectionRef, item.id), convertedItem);
+    console.log("Current movie IDs:", movies.map(m => m.id));
+console.log("Trying to add movie ID:", item.id);
+
+    // Now that the item is saved, add the converted item to the local state
+    if (item.showType === 'movie') {
+      setMovies((prevMovies) => {
+        if (!prevMovies.some(movie => movie.id === item.id)) {
+          setMessage("Added")
+          return [convertedItem, ...prevMovies];
+         
         }
+        setMessage("Already Added")
+        return prevMovies;  // no change
         
-        setShowAdded(true);
-        setTimeout(() => setShowAdded(false), 2000);  // Hide "Added" message after 2 seconds
-      };
+      });
+    } else if (item.showType === 'series') {
+      setSeries((prevSeries) => {
+        if (!prevSeries.some(seriesItem => seriesItem.id === item.id)) {
+          setMessage("Added")
+          return [convertedItem,...prevSeries];
+        
+        }
+        setMessage("Already Added")
+        return prevSeries;  // no change
+          
+      });
+    }
+    setShowAdded(true);  // Show the "Added" message
+    
+    setTimeout(() => setShowAdded(false), 2000);  // Hide "Added" message after 2 seconds
+  } catch (error) {
+    console.error("Error saving item to Firestore: ", error);
+  }
+};
+
+
+    const fetchUserContent = async () => {
+      // Reference to the user's document
+    
+      // Fetch movies
+      const moviesSnapshot = await getDocs(collection(userRef, "movies"));
+      const fetchedMovies = moviesSnapshot.docs.map(doc =>({
+        id: doc.id,          
+        ...doc.data()
+      }));
+      setMovies(fetchedMovies);
+    
+      // Fetch TV Shows
+      const tvShowsSnapshot = await getDocs(collection(userRef, "tvShows"));
+      const fetchedSeries = tvShowsSnapshot.docs.map(doc =>({
+        id: doc.id,          
+        ...doc.data()
+      }));
+      setSeries(fetchedSeries);
+    };
+    //remove shows
+    const removeShow = async (collectionName, showId) => {
+      try{
+        console.log("Trying to delete from:", collectionName, "ID:", showId);
+        const showRef = doc(db, "users", userID, collectionName, showId);
+
+        if (collectionName === 'movies') {
+          let filteredList = movies.filter(item => item.id != showId)
+          setMovies(filteredList);
+        } else if (collectionName === 'tvShows') {
+          let filteredList = series.filter(item => item.id != showId)
+          setSeries(filteredList);
+        
+        }
+    await deleteDoc(showRef);
+
+      } catch (err) {
+        console.log('remove failed: ', err)
+      }
+    }
+    
+    useEffect(() => {
+      fetchUserContent();
+    }, [userID]);
+
+    function handleLogout(){
+      signOut(auth).
+      then(()=> navigation.navigate('Login')).
+      catch(error => console.log(error))
+  }
+
+
       return (
         <View style={styles.container}>
           {/* Fixed Header */}
           <View style={styles.header}>
             <Text style={styles.H1}>MovieTracker</Text>
+            <TouchableOpacity onPress={() => toggleShowMenu()} style={styles.profileIcon}>
+              <Text style={styles.profileText}>☰</Text>
+            </TouchableOpacity>
           </View>
-    
+
+          {showMenu && (
+            <View style={styles.dropdownMenu}>
+              <Text style={styles.dropdownText}>Logged in as: {userEmail}</Text>
+              <Pressable onPress={handleLogout}>
+                <Text style={styles.logout}>Logout</Text>
+              </Pressable>
+            </View>
+)}
+          
           {/* Main Content Area */}
           <View style={styles.content}>
             {/* Conditional Search Overlay */}
@@ -103,7 +229,7 @@ export default function HomeScreen({ navigation }) {
                   keyExtractor={(item, index) => index.toString()}
                   renderItem={({ item }) => (
                     <TouchableOpacity
-                      onPress={() => handleAddItem(item)}  // Quick press adds item
+                      onPress={() => handleAddItem(item)}  
                       style={styles.movieItem}>
                       <Image
                         source={{
@@ -155,21 +281,25 @@ export default function HomeScreen({ navigation }) {
                     keyExtractor={(item, index) => index.toString()}
                     renderItem={({ item }) => (
                       <View style={styles.contentItem}>
-                        <Image
-                          source={{
-                            uri:
-                              item.imageSet?.verticalPoster?.w360 ||
-                              'https://via.placeholder.com/150',
-                          }}
-                          style={styles.image}
-                          resizeMode="cover"
-                        />
+                            <View style={styles.imageContainer}>
+                            <BouncyCheckbox
+                              style={styles.checkbox}
+                              size={35}
+                              fillColor="green"
+                              unFillColor="#FFFFFF"
+                              iconStyle={{ borderColor: "red" }}
+                              innerIconStyle={{ borderWidth: 2 }}
+                              onPress={() => removeShow("movies", item.id)}
+                              isChecked={false}
+                            />
+                            <Image source={{ uri: item.image }} style={styles.image} resizeMode="cover" />
+                          </View>
                         <Text style={styles.contentTitle}>{item.title}</Text>
       
-                        {item.streamingOptions?.dk ? (
+                        {item.streamingOptions ? (
                           Array.from(
                             new Map(
-                              item.streamingOptions.dk.map((platform) => [
+                              item.streamingOptions.map((platform) => [
                                 platform.service.id,
                                 platform,
                               ])
@@ -205,36 +335,40 @@ export default function HomeScreen({ navigation }) {
                     keyExtractor={(item, index) => index.toString()}
                     renderItem={({ item }) => (
                       <View style={styles.contentItem}>
-                        <Image
-                          source={{
-                            uri:
-                              item.imageSet?.verticalPoster?.w360 ||
-                              'https://via.placeholder.com/150',
-                          }}
-                          style={styles.image}
-                          resizeMode="cover"
-                        />
+                         <View style={styles.imageContainer}>
+                          <BouncyCheckbox
+                            style={styles.checkbox}
+                            size={30}
+                            fillColor="green"
+                            unFillColor="#FFFFFF"
+                            iconStyle={{ borderColor: "red" }}
+                            innerIconStyle={{ borderWidth: 2 }}
+                            onPress={() => removeShow("tvShows", item.id)}
+                            isChecked={false}
+                          />
+                          <Image source={{ uri: item.image }} style={styles.image} resizeMode="cover" />
+                        </View>
                         <Text style={styles.contentTitle}>{item.title}</Text>
       
-                        {item.streamingOptions?.dk ? (
+                        {item.streamingOptions ? (
                           Array.from(
                             new Map(
-                              item.streamingOptions.dk.map((platform) => [
+                              item.streamingOptions.map((platform) => [
                                 platform.service.id,
                                 platform,
                               ])
                             ).values()
                           ).map((platform, index) => (
                             <TouchableOpacity
-                              key={index}
-                              onPress={() => Linking.openURL(platform.link)}>
-                              <SvgUri
-                                width="30"
-                                height="30"
-                                uri={platform.service.imageSet.darkThemeImage}
-                              />
-                            </TouchableOpacity>
-                          ))
+                            key={index}
+                            onPress={() => Linking.openURL(platform.link)}>
+                            <SvgUri
+                              width="30"
+                              height="30"
+                              uri={platform.service.imageSet.darkThemeImage}
+                            />
+                          </TouchableOpacity>
+                        ))
                         ) : (
                           <Text style={styles.platform}>No streaming info</Text>
                         )}
@@ -258,7 +392,7 @@ export default function HomeScreen({ navigation }) {
           {/* "Added" Message */}
           {showAdded && (
             <View style={styles.addedMessage}>
-              <Text style={styles.addedText}>Added</Text>
+              <Text style={styles.addedText}>{message}</Text>
             </View>
           )}
         </View>
@@ -279,11 +413,14 @@ export default function HomeScreen({ navigation }) {
           paddingTop: 50,
           paddingBottom: 10,
           alignItems: 'center',
+          justifyContent: 'center',
+          position: 'relative',
         },
         H1: {
           color: 'white',
           fontWeight: 'bold',
           fontSize: 36,
+          textAlign: 'center',
         },
         content: {
           flex: 1,
@@ -305,26 +442,38 @@ export default function HomeScreen({ navigation }) {
           color: 'white',
           fontSize: 18,
           
+          
         },
         footer: {
-          position: 'absolute', // Fix the footer at the bottom of the screen
-          bottom: 0,
-          width: '100%',
+          bottom:10,
           padding: 15,
           alignItems: 'center',
           justifyContent: 'flex-end',
           zIndex: 20, // Ensure footer is above overlay
         },
         button: {
+          position:'absolute',
           backgroundColor: '#FF4500',
-          paddingVertical: 16,
-          paddingHorizontal: 40,
+          paddingVertical: 5,
+          paddingHorizontal: 20,
           borderRadius: 30,
           shadowColor: '#FF4500',
           shadowOpacity: 0.2,
-          shadowRadius: 15,
-          elevation: 10,
         },
+        logoutButton: {
+          backgroundColor: '#FF4500',
+          paddingVertical: 6,
+          paddingHorizontal: 12,
+          borderRadius: 20,
+        
+      
+        },
+        logout: {
+          color: 'white',
+          fontSize: 14,
+          fontWeight: 'bold',
+        },
+        
         add: {
           color: 'white',
           fontSize: 32,
@@ -376,13 +525,15 @@ export default function HomeScreen({ navigation }) {
           borderRadius: 10,
           width: 150,
           height:250,
+          position: 'relative', 
          
         },
-        image: {
-          width: '100%',
-          height: '60%',
-          borderRadius: 10,
-        },
+       
+image: {
+  width: '100%',
+  height: '100%',
+  borderRadius: 10,
+},
         contentTitle: {
           color: 'white',
           fontSize: 12,
@@ -403,7 +554,7 @@ export default function HomeScreen({ navigation }) {
         },
         addedMessage: {
             position: 'absolute',
-            bottom: 80,  // Adjust based on footer height
+            bottom: 80, 
         
             padding: 10,
             backgroundColor: 'green',
@@ -420,6 +571,48 @@ export default function HomeScreen({ navigation }) {
             fontSize: 16,
             zIndex: 100, // Ensures text is above other content in the overlay
           },
+          profileIcon: {
+            position: 'absolute',
+            right: 20,
+            top: 60,
+            zIndex: 10,
+          },
+          profileText: {
+            fontSize: 22,
+            color: 'white',
+          },
+          dropdownMenu: {
+            position: 'absolute',
+            top: 100,
+            right: 20,
+            backgroundColor: '#222',
+            padding: 15,
+            borderRadius: 10,
+            zIndex: 99,
+          },
+          dropdownText: {
+            color: 'white',
+            marginBottom: 10,
+          },
+          checkbox: {
+            position: 'absolute',
+            top: 10,
+            right:10,
+            zIndex: 100,
+          },
+          imageContainer: {
+            position: 'relative',
+            width:130,
+            height: 140, 
+            marginBottom: 10,
+           
+          },
           
+          checkbox: {
+            position: 'absolute',
+            left:100,
+            top:-5,
+            zIndex: 10,
+          },
       });
       
