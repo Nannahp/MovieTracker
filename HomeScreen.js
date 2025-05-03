@@ -7,12 +7,12 @@ import * as streamingAvailability from 'streaming-availability';
 import { Dimensions } from 'react-native';
 import { RFPercentage, RFValue } from 'react-native-responsive-fontsize';
 import { KeyboardAwareScrollView } from 'react-native-keyboard-aware-scroll-view';
-import { debounce } from 'lodash';
+import { debounce, orderBy } from 'lodash';
 import{ SvgUri }from 'react-native-svg';
 import { useAuth } from "./AuthContext";
 import { signOut } from "firebase/auth";
 import { auth,db } from "./firebase";
-import { doc, setDoc, collection, deleteDoc, serverTimestamp   } from 'firebase/firestore';
+import { doc, setDoc, collection, deleteDoc, serverTimestamp , query  } from 'firebase/firestore';
 import { getDocs } from 'firebase/firestore';
 import Icon from 'react-native-vector-icons/FontAwesome';
 import ActionButton from 'react-native-circular-action-menu';
@@ -36,28 +36,48 @@ export default function HomeScreen({ navigation }) {
   const userRef = doc(db, "users", userID); 
   const [message, setMessage] = useState('')
   const [checkedItems, setCheckedItems] = useState({});
-  const [movieSortOrder, setMovieSortOrder] = useState('asc');
-const [seriesSortOrder, setSeriesSortOrder] = useState('asc');
-const toggleMovieSort = () => {
-  setMovieSortOrder(prev => (prev === 'asc' ? 'desc' : 'asc'));
+  const [movieOrderAsc, setMovieOrderAsc] = useState(false);
+  const [seriesOrderAsc, setSeriesOrderAsc] = useState(false);
+  
+
+const toggleSort = (list, type) => {
+  const sorted = sortList(list, type);
+  if (type === 'movies') {
+    setMovies([...sorted]);
+  } else {
+    setSeries([...sorted]);
+  }
 };
 
-const toggleSeriesSort = () => {
-  setSeriesSortOrder(prev => (prev === 'asc' ? 'desc' : 'asc'));
-};
+
+function sortList(list, type) {
+  const sortedList = [...list];
+
+  if (type === "movies") {
+    const newOrder = !movieOrderAsc;
+    setMovieOrderAsc(newOrder);
+    sortedList.sort((a, b) => {
+      const x = a.createdAt?.toDate?.() || new Date(a.localCreatedAt);
+      const y = b.createdAt?.toDate?.() || new Date(b.localCreatedAt);
+      
+      return newOrder ? x - y : y - x;
+    });
+  } else if (type === "series") {
+    const newOrder = !seriesOrderAsc;
+    setSeriesOrderAsc(newOrder);
+    sortedList.sort((a, b) => {
+      const x = a.createdAt?.toDate?.() || new Date(a.localCreatedAt);
+      const y = b.createdAt?.toDate?.() || new Date(b.localCreatedAt);
+      
+      return newOrder ? x - y : y - x;
+    });
+  }
 
 
-const sortedMovies = [...movies].sort((a, b) =>
-  movieSortOrder === 'asc'
-    ? a.createdAt - b.createdAt
-    : b.createdAt - a.createdAt
-);
 
-const sortedSeries = [...series].sort((a, b) =>
-  seriesSortOrder === 'asc'
-    ? a.createdAt - b.createdAt
-    : b.createdAt - a.createdAt
-);
+  return sortedList;
+}
+
   useEffect(() => {
     const currentUser = auth.currentUser;
     if (currentUser) {
@@ -72,6 +92,7 @@ const sortedSeries = [...series].sort((a, b) =>
              apiKey: RAPID_API_KEY,
              })
             )
+
             const fetchEntries = async () => {
                 if (!text) return;
                 try {
@@ -81,14 +102,8 @@ const sortedSeries = [...series].sort((a, b) =>
                         order_by: "popularity_alltime", //doesnt work
                        
                     });
-                     // Sort entries: ones with streamingOptions.dk first
-                        const sorted = [...(data || [])].sort((a, b) => {
-                            const aHasServices = a.streamingOptions?.dk?.length > 0;
-                            const bHasServices = b.streamingOptions?.dk?.length > 0;
-                            return aHasServices === bHasServices ? 0 : aHasServices ? -1 : 1;
-                        });
                     
-                    setEntries(sorted);
+                    setEntries(data);
                 } catch (err) {
                     console.error("API error:", err);
                 }
@@ -110,31 +125,19 @@ const sortedSeries = [...series].sort((a, b) =>
       setShowMenu(prev => !prev);
     }
 
-    const toggleCheckbox = (id) => {
-      setCheckedItems((prevState) => {
-        const newState = { ...prevState };
-  
-        // If item is already checked, uncheck it, else check it
-        if (newState[id]) {
-          delete newState[id];
-        } else {
-          newState[id] = true;
-        }
-  
-        return newState;
-      });
-    };
+   
     const handleAddItem = async (item) => {
-
+      const now = new Date();
       // Convert API item to the structure required by Firestore
-  const convertedItem = {
-    id: item.id,
-    title: item.title,
-    image: item.imageSet?.verticalPoster?.w360 || 'default-image-url', // Use a default image if no image is available
-    streamingOptions: item.streamingOptions?.dk || [], // Ensure it's an empty array if no streaming options
-    showType: item.showType,
-    createdAt:serverTimestamp()
-  };
+      const convertedItem = {
+        id: item.id,
+        title: item.title,
+        image: item.imageSet?.verticalPoster?.w360 || 'default-image-url', // Use a default image if no image is available
+        streamingOptions: item.streamingOptions?.dk || [], // Ensure it's an empty array if no streaming options
+        showType: item.showType,
+        createdAt: serverTimestamp(),   
+        localCreatedAt: now  
+      };
       // Check if the item is already added to avoid duplicates
       const userRef = doc(db, "users", userID);  // Reference to the logged-in user's document
     
@@ -153,7 +156,12 @@ console.log("Trying to add movie ID:", item.id);
       setMovies((prevMovies) => {
         if (!prevMovies.some(movie => movie.id === item.id)) {
           setMessage("Added")
-          return [convertedItem, ...prevMovies];
+          console.log(movieOrderAsc)
+          if( movieOrderAsc){
+          return   [...prevMovies, convertedItem];}
+          else {return[convertedItem, ...prevMovies];
+
+          }
          
         }
         setMessage("Already Added")
@@ -164,7 +172,12 @@ console.log("Trying to add movie ID:", item.id);
       setSeries((prevSeries) => {
         if (!prevSeries.some(seriesItem => seriesItem.id === item.id)) {
           setMessage("Added")
-          return [convertedItem,...prevSeries];
+          if(seriesOrderAsc){
+            return [...prevSeries, convertedItem];
+         
+          } else {
+            return [convertedItem,...prevSeries];
+          }
         
         }
         setMessage("Already Added")
@@ -185,20 +198,23 @@ console.log("Trying to add movie ID:", item.id);
       // Reference to the user's document
     
       // Fetch movies
-      const moviesSnapshot = await getDocs(collection(userRef, "movies"));
-      const fetchedMovies = moviesSnapshot.docs.map(doc =>({
-        id: doc.id,          
+      const moviesQuery = query(collection(userRef, "movies"), orderBy("localCreatedAt"));
+      const moviesSnapshot = await getDocs(moviesQuery);
+      
+      const fetchedMovies = moviesSnapshot.docs.map(doc => ({
+        id: doc.id,
         ...doc.data()
       }));
-      setMovies(fetchedMovies);
+      setMovies(sortList(fetchedMovies, 'movies'));
+      
     
       // Fetch TV Shows
-      const tvShowsSnapshot = await getDocs(collection(userRef, "tvShows"));
+      const tvShowsSnapshot = await getDocs(collection(userRef, "tvShows"),orderBy("createdAt","desc"));
       const fetchedSeries = tvShowsSnapshot.docs.map(doc =>({
         id: doc.id,          
         ...doc.data()
       }));
-      setSeries(fetchedSeries);
+      setSeries(sortList(fetchedSeries,'series'));
     };
 
 
@@ -212,12 +228,14 @@ console.log("Trying to add movie ID:", item.id);
         if (collectionName === 'movies') {
           let filteredList = movies.filter(item => item.id != showId)
           setMovies(filteredList);
+       
         } else if (collectionName === 'tvShows') {
           let filteredList = series.filter(item => item.id != showId)
           setSeries(filteredList);
-        
+         
         }
 
+      
     await deleteDoc(showRef);
 
 // Ensure the checkbox state is cleared
@@ -344,10 +362,17 @@ setCheckedItems(prevState => {
               <View style={styles.splitContainer}>
                 {/* Movies Section */}
                 <View style={styles.section}>
+                  <View style={styles.sort}>
                   <Text style={styles.H2}>Movies</Text>
-                  <Pressable onPress={toggleMovieSort}>
-                  <IconAction name="caret-down-outline"style={styles.actionButtonIcon} />
+                  <Pressable onPress={() => toggleSort(movies, 'movies')}
+                     style={styles.sortButton}>
+                    {movieOrderAsc ? (
+                      <IconAction name="caret-up-outline" style={styles.actionButtonIcon} />
+                    ) : (
+                      <IconAction name="caret-down-outline" style={styles.actionButtonIcon} />
+                    )}
                   </Pressable>
+                  </View>
                   <FlatList
                     horizontal
                     data={movies}
@@ -407,10 +432,17 @@ setCheckedItems(prevState => {
     
                 {/* TV Section */}
                 <View style={styles.section}>
+                <View style={styles.sort}>
                   <Text style={styles.H2}>TV</Text>
-                  <Pressable onPress={toggleSeriesSort}>
-                  <IconAction name="caret-down-outline"style={styles.actionButtonIcon} />
-                  </Pressable>
+                  <Pressable onPress={() => toggleSort(series, 'series')}
+                    style={styles.sortButton}>
+                      {seriesOrderAsc ? (
+                        <IconAction name="caret-up-outline" style={styles.actionButtonIcon} />
+                      ) : (
+                        <IconAction name="caret-down-outline" style={styles.actionButtonIcon} />
+                      )}
+                    </Pressable>
+                    </View>
                   <FlatList
                     horizontal
                     data={series}
@@ -757,6 +789,14 @@ setCheckedItems(prevState => {
         height: 22,
         color: 'white',
       },
-     
+      sort: {
+        flexDirection:'row',
+        paddingHorizontal:5,
+
+      },
+      sortButton: {
+        paddingHorizontal:5,
+        paddingTop:2,
+      }
     });
     
