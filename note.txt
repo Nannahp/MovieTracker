@@ -7,8 +7,8 @@
  - tap out of the section
 
 //// Home screen /////
-- sort button skal sorte
--search for added
+
+
 - item details
 
 //// search ////
