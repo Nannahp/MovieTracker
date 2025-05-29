@@ -39,11 +39,9 @@ const db = getFirestore();
         // Store the user data in Firestore 'users' collection
         await setDoc(doc(db, "users", userID), {
           email: user.email,
-          // Add any other fields you'd like here
-          createdAt: new Date(),
         });
   
-        // Set the user ID in the context (or your state)
+        // Set the user ID 
         setUserID(userID);
   
         // Navigate to the HomeScreen

@@ -53,7 +53,7 @@ export default function HomeScreen({ navigation }) {
 //--- On Mounted ----
 
 //### LOGIN ###
-  // Login
+  //Get user
   useEffect(() => {
     // Get the currently authenticated user from Firebase Auth
     const currentUser = auth.currentUser;
@@ -88,7 +88,7 @@ export default function HomeScreen({ navigation }) {
     setMovies(sortList(fetchedMovies, 'movies'));
       
     // Fetch TV Shows - TODO: Chnage to 'series'
-    const tvShowsSnapshot = await getDocs(collection(userRef, "tvShows"),orderBy("createdAt","desc"));
+    const tvShowsSnapshot = await getDocs(collection(userRef, "tvShows"));
     const fetchedSeries = tvShowsSnapshot.docs.map(doc =>({
       id: doc.id,          
       ...doc.data()
@@ -258,8 +258,7 @@ export default function HomeScreen({ navigation }) {
       setSeriesOrderAsc(newOrder);
       sortedList.sort((a, b) => {
         const x = a.createdAt?.toDate?.() || new Date(a.localCreatedAt);
-        const y = b.createdAt?.toDate?.() || new Date(b.localCreatedAt);
-        
+        const y = b.createdAt?.toDate?.() || new Date(b.localCreatedAt); 
         return newOrder ? x - y : y - x;
       });
     }
