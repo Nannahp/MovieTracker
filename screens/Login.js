@@ -2,8 +2,8 @@ import React, { useEffect, useState } from "react";
 import {
   View, Text,TextInput,Pressable, StyleSheet,Alert,} from "react-native";
 import {createUserWithEmailAndPassword,signInWithEmailAndPassword,} from "firebase/auth";
-import { auth } from "./firebase";
-import { useAuth } from "./AuthContext";
+import { auth } from "../firebase";
+import { useAuth } from "../AuthContext";
 import { getFirestore, doc, setDoc } from "firebase/firestore";
 
 export default function Login({ navigation }) {
